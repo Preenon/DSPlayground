@@ -8,9 +8,6 @@ from tones.mixer import Mixer
 import sounddevice as sd
 from datetime import datetime
 
-default_sample_rate = 44100  # Hz
-default_amplitude = 0.5
-
 
 class ToneMixer(QWidget):
     def __init__(self):
@@ -20,18 +17,21 @@ class ToneMixer(QWidget):
     def init_ui(self):
         self.mixed_samples = None
         self.sampled_signal = None
-
+        self.mixer_sample_rate = 44100  # audio standard (Hz)
+        self.amplitude = 0.5
+        self.fft_size = self.mixer_sample_rate
+        
         layout = QVBoxLayout()
 
-        self.mixer_sampling_rate_input = self.create_text_input('Mixer Sampling Rate (Hz)', default=str(default_sample_rate))
-        self.mixer_amplitude_input = self.create_text_input('Mixer Amplitude', default=str(default_amplitude))
+        self.mixer_sampling_rate_input = self.create_text_input('Mixer Sampling Rate (Hz)', default=str(self.mixer_sample_rate))
+        self.mixer_amplitude_input = self.create_text_input('Mixer Amplitude', default=str(self.amplitude))
         self.sine_freq_input = self.create_text_input('Sine Wave Frequency (Hz)')
         self.square_freq_input = self.create_text_input('Square Wave Frequency (Hz)')
         self.triangle_freq_input = self.create_text_input('Triangle Wave Frequency (Hz)')
         self.sawtooth_freq_input = self.create_text_input('Sawtooth Wave Frequency (Hz)')
         self.duration_input = self.create_text_input('Duration (seconds)')
         self.sampling_rate_input = self.create_text_input('Discrete Sampling Rate (Hz)')
-        self.fft_size_input = self.create_text_input('FFT Size')
+        self.fft_size_input = self.create_text_input('FFT Size', default=str(self.fft_size))
 
         layout.addWidget(self.mixer_sampling_rate_input)
         layout.addWidget(self.mixer_amplitude_input)
@@ -82,36 +82,52 @@ class ToneMixer(QWidget):
         self.generate_signal(save_to_wav=self.save_sound_checkbox.isChecked())
         if self.mixed_samples is not None:
             try: 
-                sd.check_output_settings(samplerate=self.sample_rate) # Check if output sound device supports sample rate
+                sd.check_output_settings(samplerate=self.mixer_sample_rate) # check if output sound device supports sample rate
             except Exception as e:
                 self.show_warning("Unsupported Sample Rate", str(e))
                 return
             print("Playing the mixed signal...")
-            sd.play(self.mixed_samples, self.sample_rate)
+            sd.play(self.mixed_samples, self.mixer_sample_rate)
             sd.wait()
             print("Playback finished.")
 
 
     def plot_signal(self):
+        """Plot the mixed waveform signal using matplotlib."""
         self.generate_signal()
         if self.mixed_samples is not None:
             plt.figure(figsize=(8, 2.2))
-            samples = self.mixed_samples
-            sample_rate = self.sample_rate
-            duration = len(samples) / sample_rate
-            time_axis = np.linspace(0, duration, len(samples))
+            
+            # compute x-axis values
+            duration = len(self.mixed_samples) / self.mixer_sample_rate  # total duration in seconds
+            time_axis = [i / self.mixer_sample_rate for i in range(len(self.mixed_samples))]  # time in seconds
+            
+            max_frequency = max(self.get_input_text(self.sine_freq_input),
+                                self.get_input_text(self.square_freq_input),
+                                self.get_input_text(self.triangle_freq_input),
+                                self.get_input_text(self.sawtooth_freq_input))
 
-            plt.plot(time_axis, samples, color='blue')
+            # adjust visible interval inversely proportional to frequency
+            if max_frequency > 0:
+                visible_duration = 10 / max_frequency  # display ~10 cycles
+            else:
+                visible_duration = duration  # show full duration for zero frequency
+
+            plt.plot(time_axis, self.mixed_samples, color='blue')
             plt.title('Mixed Signal')
             plt.xlabel('Time (s)')
             plt.ylabel('Amplitude')
             plt.grid()
 
-            y_min, y_max = min(samples), max(samples)
-            plt.ylim(y_min * 1.1, y_max * 1.1)
+            # adjust axes dynamically
+            plt.xlim(0, min(visible_duration, duration))  # limit to either the visible or full duration
+
+            # get the y-axis limits for consistency
+            y_min, y_max = min(self.mixed_samples), max(self.mixed_samples)
+            plt.ylim(y_min * 1.1, y_max * 1.1)  # extend y-limits slightly for clarity
+
             plt.tight_layout()
             plt.show()
-
             if self.save_plot_checkbox["Plot Signal"].isChecked():
                 filename = f"plot_signal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
                 plt.savefig(filename)
@@ -120,14 +136,16 @@ class ToneMixer(QWidget):
     def sample_signal(self):
         self.generate_signal()
         if self.mixed_samples is not None:
-            original_duration = len(self.mixed_samples) / self.sample_rate
+            original_duration = len(self.mixed_samples) / self.mixer_sample_rate
             original_time = np.linspace(0, original_duration, len(self.mixed_samples))
             
+            # get user-specified sampling rate
             new_sample_rate = self.get_input_text(self.sampling_rate_input)
             if new_sample_rate <= 0:
                 self.show_warning('Invalid Sampling Rate', 'Sampling rate must be greater than 0.')
                 return
             
+            # perform equidistant sampling
             sampled_duration = self.get_input_text(self.duration_input)
             if sampled_duration <= 0:
                 self.show_warning('Invalid Duration', 'Duration must be greater than 0.')
@@ -137,32 +155,45 @@ class ToneMixer(QWidget):
             sampled_time = np.linspace(0, sampled_duration, num_samples)
             sampled_signal = np.interp(sampled_time, original_time, self.mixed_samples)
 
-            self.sampled_signal = sampled_signal
+            self.plot_sampled_signal(original_time, sampled_time, sampled_signal)
 
-            plt.figure(figsize=(8, 2.2))
-            plt.plot(original_time, self.mixed_samples, 'k', linewidth=1, linestyle='dotted')
-            plt.stem(sampled_time, sampled_signal, linefmt='r', markerfmt='ro', basefmt='None')
-            
-            plt.title(f'DT-Signal obtained by sampling with $F_s = {new_sample_rate}$ Hz')
-            plt.xlabel('Time (seconds)')
-            
-            y_min, y_max = min(self.mixed_samples), max(self.mixed_samples)
-            plt.ylim(y_min * 1.1, y_max * 1.1)
-            plt.tight_layout()
-            plt.show()
+    def plot_sampled_signal(self, original_time, sampled_time, sampled_signal):
+        plt.figure(figsize=(8, 2.2))
+        plt.plot(original_time, self.mixed_samples, 'k', linewidth=1, linestyle='dotted')
+        plt.stem(sampled_time, sampled_signal, linefmt='r', markerfmt='ro', basefmt='None')
+        
+        plt.title(f'DT-Signal obtained by sampling with $F_s = {self.get_input_text(self.sampling_rate_input)}$ Hz')
+        plt.xlabel('Time (seconds)')
+        
+        y_min, y_max = min(self.mixed_samples), max(self.mixed_samples)
+        plt.ylim(y_min * 1.1, y_max * 1.1)
 
-            if self.save_plot_checkbox["Sample and Plot Discrete Signal"].isChecked():
-                filename = f"sample_signal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-                plt.savefig(filename)
-                print(f"Plot saved as {filename}")
+        max_frequency = max(self.get_input_text(self.sine_freq_input),
+                            self.get_input_text(self.square_freq_input),
+                            self.get_input_text(self.triangle_freq_input),
+                            self.get_input_text(self.sawtooth_freq_input))
+        
+        if max_frequency > 0:
+            visible_duration = 10 / max_frequency
+        else:
+            visible_duration = len(self.mixed_samples) / self.mixer_sample_rate
+
+        plt.xlim(0, min(visible_duration, len(self.mixed_samples) / self.mixer_sample_rate))
+        plt.tight_layout()
+        plt.show()
+
+        if self.save_plot_checkbox["Sample and Plot Discrete Signal"].isChecked():
+            filename = f"sample_signal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+            plt.savefig(filename)
+            print(f"Plot saved as {filename}")
 
     def plot_fft(self):
         self.generate_signal()
         if self.mixed_samples is not None:
 
-            # Ensure FFT size matches the sample rate
-            # TODO: See if it's possible to decouple the two
-            if self.fft_size != self.sample_rate:
+            # ensure FFT size matches the sample rate
+            # TODO: sSee if it's possible to decouple the two
+            if self.fft_size != self.mixer_sample_rate:
                 self.show_warning(
                     "FFT Size Mismatch",
                     "The FFT size must match the sample rate. Please adjust your input. TODO: See if it's possible to decouple the two."
@@ -172,7 +203,7 @@ class ToneMixer(QWidget):
             fft_result = np.fft.fftshift(np.fft.fft(self.mixed_samples))
             mag = np.abs(fft_result)
             phase = np.angle(fft_result)
-            freqs = np.linspace(-self.sample_rate / 2, self.sample_rate / 2, self.fft_size)
+            freqs = np.linspace(-self.mixer_sample_rate / 2, self.mixer_sample_rate / 2, self.fft_size)
 
             plt.figure(figsize=(8, 4))
             plt.subplot(2, 1, 1)
@@ -198,21 +229,18 @@ class ToneMixer(QWidget):
     def plot_psd(self):
         self.generate_signal()
         if self.mixed_samples is not None:
-
-            # Ensure FFT size matches the sample rate
-            # TODO: See if it's possible to decouple the two
-            if self.fft_size != self.sample_rate:
+            if self.fft_size != self.mixer_sample_rate:
                 self.show_warning(
                     "FFT Size Mismatch",
                     "The FFT size must match the sample rate. Please adjust your input. TODO: See if it's possible to decouple the two."
                 )
                 return
             
-            psd = np.abs(np.fft.fft(self.mixed_samples)) ** 2 / (self.fft_size * self.sample_rate)
+            psd = np.abs(np.fft.fft(self.mixed_samples)) ** 2 / (self.fft_size * self.mixer_sample_rate)
             psd_log = 10.0 * np.log10(psd)
             psd_shifted = np.fft.fftshift(psd_log)
 
-            freqs = np.linspace(-self.sample_rate / 2, self.sample_rate / 2, self.fft_size)
+            freqs = np.linspace(-self.mixer_sample_rate / 2, self.mixer_sample_rate / 2, self.fft_size)
 
             plt.plot(freqs, psd_shifted, '.-')
             plt.title('Power Spectral Density')
@@ -234,15 +262,15 @@ class ToneMixer(QWidget):
         triangle_freq = self.get_input_text(self.triangle_freq_input)
         sawtooth_freq = self.get_input_text(self.sawtooth_freq_input)
         duration = self.get_input_text(self.duration_input)
-        self.sample_rate = int(self.get_input_text(self.mixer_sampling_rate_input) or default_sample_rate)
-        amplitude = float(self.get_input_text(self.mixer_amplitude_input) or default_amplitude)
+        self.mixer_sample_rate = int(self.get_input_text(self.mixer_sampling_rate_input))
+        self.amplitude = float(self.get_input_text(self.mixer_amplitude_input))
         self.fft_size = int(self.get_input_text(self.fft_size_input))
 
         if duration <= 0:
             self.show_warning('Invalid Duration', 'Duration must be greater than 0.')
             return
 
-        mixer = Mixer(self.sample_rate, amplitude)
+        mixer = Mixer(self.mixer_sample_rate, self.amplitude)
         if sine_freq > 0:
             mixer.create_track(0, SINE_WAVE)
             mixer.add_tone(0, frequency=sine_freq, duration=duration)
