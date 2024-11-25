@@ -1,5 +1,5 @@
 # DSPlayground
-A suite of educational tools and visualizer for digital signal processing concepts. I would be pleased if this helps anyone reinforce their learning on DSP topics! Currently consists of the following tools:
+A suite of educational tools and visualizers for digital signal processing concepts, currently written in Python. I would be pleased if this helps anyone reinforce their learning on DSP topics! Currently consists of the following tools:
 
 ## Tone Mixer
 Generate and mix the four major waveforms (sine, square, triangle, sawtooth) at specified frequencies (in Hz) and hear the output signal, as well as view the associated plot in the time domain! You can also specify a downsampling rate and view the sampled plot, and view the signal in the frequency domain (via its FFT and PSD). WARNING: Ensure that the FFT size is the same as the mixer's sampling rate. Features an option to save signals as WAV files and plots as PNGs.
