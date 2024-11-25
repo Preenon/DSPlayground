@@ -93,7 +93,6 @@ class ToneMixer(QWidget):
 
 
     def plot_signal(self):
-        """Plot the mixed waveform signal using matplotlib."""
         self.generate_signal()
         if self.mixed_samples is not None:
             plt.figure(figsize=(8, 2.2))
