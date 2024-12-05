@@ -25,11 +25,13 @@ class ToneMixer(QWidget):
 
         self.mixer_sampling_rate_input = self.create_text_input('Mixer Sampling Rate (Hz)', default=str(self.mixer_sample_rate))
         self.mixer_amplitude_input = self.create_text_input('Mixer Amplitude', default=str(self.amplitude))
-        self.sine_freq_input = self.create_text_input('Sine Wave Frequency (Hz)')
+        self.sine_freq_input = self.create_text_input('Sine Wave Frequency (Hz)', default='440')
         self.square_freq_input = self.create_text_input('Square Wave Frequency (Hz)')
         self.triangle_freq_input = self.create_text_input('Triangle Wave Frequency (Hz)')
         self.sawtooth_freq_input = self.create_text_input('Sawtooth Wave Frequency (Hz)')
-        self.duration_input = self.create_text_input('Duration (seconds)')
+        self.snr_db_input = self.create_text_input('SNR (dB)')
+        self.noise_power_db_input = self.create_text_input('Noise Power (dB)')
+        self.duration_input = self.create_text_input('Duration (seconds)', default='1')
         self.sampling_rate_input = self.create_text_input('Discrete Sampling Rate (Hz)')
         self.fft_size_input = self.create_text_input('FFT Size', default=str(self.fft_size))
 
@@ -39,6 +41,8 @@ class ToneMixer(QWidget):
         layout.addWidget(self.square_freq_input)
         layout.addWidget(self.triangle_freq_input)
         layout.addWidget(self.sawtooth_freq_input)
+        layout.addWidget(self.snr_db_input)
+        layout.addWidget(self.noise_power_db_input)
         layout.addWidget(self.duration_input)
         layout.addWidget(self.sampling_rate_input)
         layout.addWidget(self.fft_size_input)
@@ -48,6 +52,7 @@ class ToneMixer(QWidget):
 
         self.add_button_with_checkbox(layout, "Play Sound", self.play_sound, self.save_sound_checkbox)
         self.add_button_with_checkbox(layout, "Plot Signal", self.plot_signal)
+        self.add_button_with_checkbox(layout, "Plot Signal Power", self.plot_signal_power)
         self.add_button_with_checkbox(layout, "Sample and Plot Discrete Signal", self.sample_signal)
         self.add_button_with_checkbox(layout, "Plot FFT", self.plot_fft)
         self.add_button_with_checkbox(layout, "Plot PSD", self.plot_psd)
@@ -78,9 +83,12 @@ class ToneMixer(QWidget):
 
         self.save_plot_checkbox[button_text] = checkbox
 
+    def at_most_one_noise(self):
+        return not (self.get_input_text(self.snr_db_input) != 0 and self.get_input_text(self.noise_power_db_input) != 0)
+    
     def play_sound(self):
         self.generate_signal(save_to_wav=self.save_sound_checkbox.isChecked())
-        if self.mixed_samples is not None:
+        if self.mixed_samples is not None and self.at_most_one_noise():
             try: 
                 sd.check_output_settings(samplerate=self.mixer_sample_rate) # check if output sound device supports sample rate
             except Exception as e:
@@ -94,7 +102,7 @@ class ToneMixer(QWidget):
 
     def plot_signal(self):
         self.generate_signal()
-        if self.mixed_samples is not None:
+        if self.mixed_samples is not None and self.at_most_one_noise():
             plt.figure(figsize=(8, 2.2))
             
             # compute x-axis values
@@ -132,9 +140,51 @@ class ToneMixer(QWidget):
                 plt.savefig(filename)
                 print(f"Plot saved as {filename}")
 
+    def plot_signal_power(self):
+        self.generate_signal()
+        if self.mixed_samples is not None and self.at_most_one_noise():
+            plt.figure(figsize=(8, 2.2))
+            
+            # compute x-axis values
+            duration = len(self.mixed_samples) / self.mixer_sample_rate  # total duration in seconds
+            time_axis = [i / self.mixer_sample_rate for i in range(len(self.mixed_samples))]  # time in seconds
+            
+            max_frequency = max(self.get_input_text(self.sine_freq_input),
+                                self.get_input_text(self.square_freq_input),
+                                self.get_input_text(self.triangle_freq_input),
+                                self.get_input_text(self.sawtooth_freq_input))
+
+            # adjust visible interval inversely proportional to frequency
+            if max_frequency > 0:
+                visible_duration = 10 / max_frequency  # display ~10 cycles
+            else:
+                visible_duration = duration  # show full duration for zero frequency
+
+            signal_power = self.mixed_samples ** 2 # convention is 1-ohm resistor
+            signal_power_db = 10 * np.log10(signal_power)
+            plt.plot(time_axis, signal_power_db, color='blue')
+            plt.title('Signal Power in dB')
+            plt.ylabel('Power (dB)')
+            plt.xlabel('Time (s)')
+            plt.grid()
+
+            # adjust axes dynamically
+            plt.xlim(0, min(visible_duration, duration))  # limit to either the visible or full duration
+
+            y_max = max(signal_power_db)
+            y_min = -60 # 1e-6x converted to dB, good enough approximation for -inf
+            plt.ylim(y_min, y_max)
+            
+            plt.tight_layout()
+            plt.show()
+            if self.save_plot_checkbox["Plot Signal Power"].isChecked():
+                filename = f"plot_signal_power_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                plt.savefig(filename)
+                print(f"Plot saved as {filename}")
+
     def sample_signal(self):
         self.generate_signal()
-        if self.mixed_samples is not None:
+        if self.mixed_samples is not None and self.at_most_one_noise():
             original_duration = len(self.mixed_samples) / self.mixer_sample_rate
             original_time = np.linspace(0, original_duration, len(self.mixed_samples))
             
@@ -188,7 +238,7 @@ class ToneMixer(QWidget):
 
     def plot_fft(self):
         self.generate_signal()
-        if self.mixed_samples is not None:
+        if self.mixed_samples is not None and self.at_most_one_noise():
 
             # ensure FFT size matches the sample rate
             # TODO: sSee if it's possible to decouple the two
@@ -227,7 +277,7 @@ class ToneMixer(QWidget):
 
     def plot_psd(self):
         self.generate_signal()
-        if self.mixed_samples is not None:
+        if self.mixed_samples is not None and self.at_most_one_noise():
             if self.fft_size != self.mixer_sample_rate:
                 self.show_warning(
                     "FFT Size Mismatch",
@@ -287,6 +337,28 @@ class ToneMixer(QWidget):
             mixer.add_tone(3, frequency=sawtooth_freq, duration=duration)
 
         self.mixed_samples = mixer.mix()
+        self.mixed_samples = np.array(self.mixed_samples)
+
+        snr_db = self.get_input_text(self.snr_db_input)
+        noise_power_avg_db = self.get_input_text(self.noise_power_db_input)
+
+        if snr_db != 0 and noise_power_avg_db != 0:
+            self.show_warning("Input Error", "Specify only one: SNR or Noise Power (both in dB).")
+            return
+
+        if snr_db != 0:
+            signal_power = self.mixed_samples ** 2 # Convention is 1-ohm resistor
+            signal_power_avg = np.mean(signal_power)
+            signal_power_avg_db = 10 * np.log10(signal_power_avg)
+            noise_power_avg_db = signal_power_avg_db - snr_db
+            noise_power_avg = 10 ** (noise_power_avg_db / 10)
+        elif noise_power_avg_db != 0:
+            noise_power_avg = 10 ** (noise_power_avg_db / 10)
+        else:
+            noise_power_avg = 0
+
+        noise = np.random.normal(0, np.sqrt(noise_power_avg), len(self.mixed_samples))
+        self.mixed_samples += noise
 
         if save_to_wav:
             filename = f"play_sound_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
