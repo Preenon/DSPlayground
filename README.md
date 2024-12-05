@@ -4,8 +4,7 @@ A suite of educational tools and visualizers for digital signal processing conce
 ## Tone Mixer
 Generate and mix the four major waveforms (sine, square, triangle, sawtooth) at specified frequencies (in Hz) and hear the output signal, as well as view the associated plot in the time domain! You can also specify a downsampling rate and view the sampled plot, as well as add AWGN by specifying the desired SNR or noise power (in dB). 
 
-![Tone Mixer GUI 1, showing a sine wave at 220 Hz combined with a square wave at 880 Hz](![tone_mixer_GUI_1](https://github.com/user-attachments/assets/59c07762-e451-426e-abf0-0e26a8c7a5ba)
-)
+![Tone Mixer GUI 1, showing a sine wave at 220 Hz combined with a square wave at 880 Hz](https://github.com/user-attachments/assets/fcc7dca6-89af-477a-a996-6f2ac0adf3f8)
 
 [Audio representation of the above signal](https://github.com/user-attachments/assets/9f980f53-a249-4caa-b1ec-239b7c544385)
 
@@ -14,8 +13,8 @@ Generate and mix the four major waveforms (sine, square, triangle, sawtooth) at 
 
 Signals are also available to view in the frequency domain (via its FFT and PSD)!
 
-![Tone Mixer GUI 2, showing a sine wave at 50 Hz combined with a square wave at 110 Hz, with a specified FFT size of 256](![tone_mixer_GUI_2](https://github.com/user-attachments/assets/8f86e476-072a-4714-81cc-6941c4cf1378)
-)
+![Tone Mixer GUI 2, showing a sine wave at 50 Hz combined with a square wave at 110 Hz, with a specified FFT size of 256](https://github.com/user-attachments/assets/28e7f6d8-d15e-43e3-836f-c064cbd44020)
+
 ![FFT frequency response of the above signal, showing magnitude and phase](https://github.com/user-attachments/assets/a3cdfc52-4faa-4785-a06f-1cc0da2ccb4d)
 ![PSD plot of the above signal](https://github.com/user-attachments/assets/42726aa5-d297-4b25-8393-ee3e90de579a)
 
